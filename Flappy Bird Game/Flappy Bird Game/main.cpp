@@ -21,26 +21,29 @@ GLuint
 VaoId,
 VboId,
 EboId,
-ProgramId,
+BirdProgramId,
+PipeProgramId,
+BackgroundProgramId,
 myMatrixLocation,
 viewLocation,
 projLocation,
 matrRotlLocation,
 codColLocation;
 GLuint
-texture;
+textures[2];
 //	Dimensiunile ferestrei de afisare;
 GLfloat
 winWidth = 1200, winHeight = 900;
 //	Variabile catre matricile de transformare;
 glm::mat4
-myMatrix, matrRot, matrTransl, matrTransl1, matrTransl2,matrScale, resizeMatrix;
+myMatrix, resizeMatrix;
+
 
 //	Variabila ce determina schimbarea culorii pixelilor in shader;
 int codCol;
 
 //	Elemente pentru matricea de proiectie;
-float width = 500, height = 500, xMin = -500.f, xMax = 500, yMin = -500, yMax = 500;
+float  xMin = -500.f, xMax = 500, yMin = -500, yMax = 500;
 
 float PI = 3.141592;
 
@@ -48,19 +51,21 @@ float
 deltax = xMax - xMin, deltay = yMax - yMin, // lungimile laturilor dreptunghiului decupat
 xcenter = (xMin + xMax) * 0.5, ycenter = (yMin + yMax) * 0.5; // centrul dreptunghiului decupat
 
-
-
-const float gravity = 0.0007f;
-const float jump_strength = 0.3f;
-float score = 0;
+float pipe_ymin = 0.0f, pipe_ymax = 1.f, 
+pipe_xmin = -0.25f, pipe_xmax = 0.25f;
 
 // Global variables
 float birdY = 0.f; // Initial bird position
 float birdVelocity = 0;
 
-float bird_xmin = -350.0f, bird_xmax = -300.0f,
-bird_ymin = -50.f, bird_ymax = 0.f;
-float rotationAngle = PI / 8;
+float bird_xmin = -0.5f, bird_xmax = 0.5f,
+bird_ymin = -0.5f, bird_ymax = 0.5f;
+float rotationAngle = 0;
+
+
+const float gravity = 0.0005f;
+const float jump_strength = 0.3f;
+float score = 0; 
 
 void game_over(void) {
 	if (birdY < yMin) {
@@ -73,13 +78,23 @@ void game_over(void) {
  void MoveDown(void) {
 	birdVelocity -= gravity;
 	birdY += birdVelocity;
+	if (birdVelocity < -1)
+		birdVelocity = -1;
+	/*
+	     v -> (-1,0.5) => v+1 -> (0,1.5) => (v+1)/1.5 -> (0,pi) 
+	*/
+
+	rotationAngle = ((birdVelocity + 1) / 1.5f) * PI - PI/2;
 	game_over();
 	glutPostRedisplay();
 }
 
 
 void MoveUp(void) {
-	birdVelocity = jump_strength;
+	if (birdVelocity > 0.5)
+		birdVelocity = 0.5;
+	else
+		birdVelocity += jump_strength;
 }
 
 
@@ -91,10 +106,11 @@ void ProcessNormalKey(unsigned char key, int x, int y) {
 
 
 //	Functia de incarcare a texturilor in program;
-void LoadTexture(const char* photoPath)
+void LoadTexture(const char* photoPath, unsigned int textureId)
 {
-	glGenTextures(1, &texture);
-	glBindTexture(GL_TEXTURE_2D, texture);
+	// first parameter represents how many textures we want to generate
+	glGenTextures(1, &textures[textureId]);
+	glBindTexture(GL_TEXTURE_2D, textures[textureId]);
 	//	Desfasurarea imaginii pe orizonatala/verticala in functie de parametrii de texturare;
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
@@ -117,8 +133,9 @@ void LoadTexture(const char* photoPath)
 //  Shaderul de fragment / Fragment shader - afecteaza culoarea pixelilor;
 void CreateShaders(void)
 {
-	ProgramId = LoadShaders("example.vert", "example.frag");
-	glUseProgram(ProgramId);
+	BirdProgramId = LoadShaders("bird.vert", "bird.frag");
+	PipeProgramId = LoadShaders("pipe.vert", "pipe.frag");
+	//BackgroundProgramId = LoadShaders("bird.vert", "bird.frag");
 }
 
 //  Se initializeaza un Vertex Buffer Object (VBO) pentru tranferul datelor spre memoria placii grafice (spre shadere);
@@ -128,16 +145,29 @@ void CreateVBO(void)
 
 	//	Atributele varfurilor -  COORDONATE, CULORI, COORDONATE DE TEXTURARE;
 	GLfloat Vertices[] = {
-		//	Coordonate;					              Culori;				Coordonate de texturare;
-		 bird_xmin, bird_ymin + birdY, 0.0f, 1.0f,   1.0f, 1.0f, 1.0f,	0.0f, 0.0f,	// Stanga jos;
-		 bird_xmax, bird_ymin + birdY, 0.0f, 1.0f,   1.0f, 1.0f, 1.0f,	1.0f, 0.0f, // Dreapta jos;
-		 bird_xmax, bird_ymax + birdY, 0.0f, 1.0f,   1.0f, 1.0f, 1.0f,	1.0f, 1.0f,	// Dreapta sus;
-		 bird_xmin, bird_ymax + birdY, 0.0f, 1.0f,   1.0f, 1.0f, 1.0f,	0.0f, 1.0f  // Stanga sus;
+		// bird's coordonate (actually a square)
+		//	Coordonate;					              Culori;			Coordonate de texturare;
+		 bird_xmin, bird_ymin , 0.0f, 1.0f,		1.0f, 1.0f, 1.0f,		0.0f, 0.0f,	
+		 bird_xmax, bird_ymin , 0.0f, 1.0f,		1.0f, 1.0f, 1.0f,		1.0f, 0.0f, 
+		 bird_xmax, bird_ymax , 0.0f, 1.0f,		1.0f, 1.0f, 1.0f,		1.0f, 1.0f,	
+		 bird_xmin, bird_ymax , 0.0f, 1.0f,		1.0f, 1.0f, 1.0f,		0.0f, 1.0f,  
+
+		//pipe coordonate
+		
+		// Coordonate;								Culori;				Coordonate de texturare;
+		pipe_xmin, pipe_ymin, 0.0f, 1.0f,		0.0f, 1.0f, 0.0f,		0.0f, 0.0f,  // Partea de jos a conductei
+		pipe_xmax, pipe_ymin, 0.0f, 1.0f,		0.0f, 1.0f, 0.0f,		1.0f, 0.0f,  // Partea de jos a conductei
+		pipe_xmax, pipe_ymax, 0.0f, 1.0f,		0.0f, 1.0f, 0.0f,		1.0f, 1.0f,  // Partea de sus a conductei
+		pipe_xmin, pipe_ymax, 0.0f, 1.0f,		0.0f, 1.0f, 0.0f,		0.0f, 1.0f,  // Partea de sus a conductei
+
 	};
 
 	//	Indicii care determina ordinea de parcurgere a varfurilor;
 	GLuint Indices[] = {
-	 0,1,2,3
+		//indices for bird draw
+			0,1,2,3,
+		//indices for pipedraw
+			4,5,6,7
 	};
 
 	//  Transmiterea datelor prin buffere;
@@ -171,7 +201,9 @@ void CreateVBO(void)
 //  Elimina obiectele de tip shader dupa rulare;
 void DestroyShaders(void)
 {
-	glDeleteProgram(ProgramId);
+	glDeleteProgram(BirdProgramId);
+	glDeleteProgram(PipeProgramId);
+	//glDeleteProgram(BackgroundProgramId);
 }
 
 //  Eliminarea obiectelor de tip VBO dupa rulare;
@@ -204,31 +236,83 @@ void Initialize(void)
 {
 	glClearColor(1.0f, 1.0f, 1.0f, 1.0f);		//  Culoarea de fond a ecranului;
 	CreateShaders();							//  Initilizarea shaderelor;
-
-	//	Incarcarea texturii si legarea acesteia cu shaderul;
-	LoadTexture("bird.png");
-	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, texture);
+	
+	//  Trecerea datelor de randare spre bufferul folosit de shadere;
+	CreateVBO();
+	
 
 	//	Instantierea variabilelor uniforme pentru a "comunica" cu shaderele;
-	myMatrixLocation = glGetUniformLocation(ProgramId, "myMatrix");
+	myMatrixLocation = glGetUniformLocation(BirdProgramId, "myMatrix");
+	myMatrixLocation = glGetUniformLocation(PipeProgramId, "myMatrix");
 
 	resizeMatrix = glm::ortho(xMin, xMax, yMin, yMax);
-	// scalare si translatie
-	matrTransl = glm::translate(glm::mat4(1.0f), glm::vec3(0.0, 0.0, 0.0));
 	
-	glm::vec3 centru = glm::vec3((bird_xmin + bird_xmax) * 0.5 , (bird_ymin + bird_ymax) * 0.5 + birdY, 0.0);
+
+	//	Incarcarea texturii si legarea acesteia cu shaderul;
+	glUseProgram(BirdProgramId);
+	LoadTexture("bird.png",0);
+	glBindTexture(GL_TEXTURE_2D, textures[0]);
 	
-	//	Translatia 1: centrul patratului este translatat in origine;
-	matrTransl1 = glm::translate(glm::mat4(1.0f), -centru);
-	//	Translatia 2: inversa/opusa translatiei T1;
-	matrTransl2 = glm::translate(glm::mat4(1.0f), centru);
 
-	matrScale = glm::scale(glm::mat4(1.0f), glm::vec3(2.f / deltax, 2.f / deltay, 1.0));
+	glUseProgram(PipeProgramId);
+	LoadTexture("pipe.png",1);
+	glBindTexture(GL_TEXTURE_2D, textures[1]);
+	
+	
+}
 
-	//	Pentru shaderul de fragmente;
-	glUniform1i(glGetUniformLocation(ProgramId, "myTexture"), 0);
+void DrawBird(void) {
+	glBindTexture(GL_TEXTURE_2D, textures[0]);
+	//	Matrici pentru transformari;
+	glm::mat4 matrRot = glm::rotate(glm::mat4(1.0f), rotationAngle, glm::vec3(0.0, 0.0, 1.0));
+	glm::mat4 matrScale = glm::scale(glm::mat4(1.f), glm::vec3(80, 80, 1.0));
+	glm::mat4 matrTranslate = glm::translate(glm::mat4(1.f), glm::vec3(-300, birdY, 1.0));
 
+	myMatrix = resizeMatrix * matrTranslate * matrScale * matrRot;
+
+	//	Transmiterea variabilei uniforme pentru TEXTURARE spre shaderul de fragmente;
+	glUniform1i(glGetUniformLocation(BirdProgramId, "birdTexture"), 0);
+
+	//	Transmiterea variabilelor uniforme pentru MATRICEA DE TRANSFORMARE
+	glUniformMatrix4fv(myMatrixLocation, 1, GL_FALSE, &myMatrix[0][0]);
+
+	// Draw bird
+	glDrawElements(GL_TRIANGLE_FAN, 4, GL_UNSIGNED_INT, 0);
+}
+
+void DrawPipeDown(void) {
+	glBindTexture(GL_TEXTURE_2D, textures[1]);
+	// matrici pentru pipe
+	glm::mat4 matrScalePipe = glm::scale(glm::mat4(1.f), glm::vec3(200, 400, 1.0));
+	glm::mat4 matrTranslatePipe = glm::translate(glm::mat4(1.f), glm::vec3(0, yMin, 1.0));
+
+	myMatrix = resizeMatrix * matrTranslatePipe * matrScalePipe ;
+
+	//	Transmiterea variabilei uniforme pentru TEXTURARE spre shaderul de fragmente;
+	glUniform1i(glGetUniformLocation(PipeProgramId, "pipeTexture"), 0);
+
+	//	Transmiterea variabilelor uniforme pentru MATRICEA DE TRANSFORMARE
+	glUniformMatrix4fv(myMatrixLocation, 1, GL_FALSE, &myMatrix[0][0]);
+
+	// Draw bottom pipe
+	glDrawElements(GL_TRIANGLE_FAN, 4, GL_UNSIGNED_INT, (void*)(4 * sizeof(GLuint)));
+
+}
+void DrawPipeUp(void) {
+	glBindTexture(GL_TEXTURE_2D, textures[1]);
+	glUniform1i(glGetUniformLocation(PipeProgramId, "pipeTexture"), 0);
+
+	// matrici pentru pipe
+	glm::mat4 matrRotPipe = glm::rotate(glm::mat4(1.0f), PI, glm::vec3(0.0, 0.0, 1.0));
+	glm::mat4 matrScalePipe = glm::scale(glm::mat4(1.f), glm::vec3(200, 400, 1.0));
+	glm::mat4 matrTranslatePipe = glm::translate(glm::mat4(1.f), glm::vec3(0, yMax, 1.0));
+
+	myMatrix = resizeMatrix * matrTranslatePipe * matrScalePipe * matrRotPipe;
+
+	//	Transmiterea variabilelor uniforme pentru MATRICEA DE TRANSFORMARE
+	glUniformMatrix4fv(myMatrixLocation, 1, GL_FALSE, &myMatrix[0][0]);
+	// Draw bottom pipe
+	glDrawElements(GL_TRIANGLE_FAN, 4, GL_UNSIGNED_INT, (void*)(4 * sizeof(GLuint)));
 }
 
 //  Functia de desenarea a graficii pe ecran;
@@ -236,26 +320,11 @@ void RenderFunction(void)
 {
 	glClear(GL_COLOR_BUFFER_BIT);			//  Se curata ecranul OpenGL pentru a fi desenat noul continut;
 
-	//	Matrici pentru transformari;
-    matrRot = glm::rotate(glm::mat4(1.0f), rotationAngle , glm::vec3(0.0, 0.0, 1.0));
-
-	myMatrix = resizeMatrix ;
-	//myMatrix = resizeMatrix * matrTransl * matrTransl2 * matrRot * matrTransl1;
-	//myMatrix = matrScale * matrTransl * matrTransl2 * matrRot * matrTransl1;
-
-	//  Trecerea datelor de randare spre bufferul folosit de shadere;
-	CreateVBO();
-
+	DrawBird();
 	
-	//	Transmiterea variabilei uniforme pentru TEXTURARE spre shaderul de fragmente;
-	glUniform1i(glGetUniformLocation(ProgramId, "myTexture"), 0);
+	DrawPipeDown();
+	DrawPipeUp();
 
-
-	//	Transmiterea variabilelor uniforme pentru MATRICEA DE TRANSFORMARE, PERSPECTIVA si PROIECTIE spre shadere;
-	glUniformMatrix4fv(myMatrixLocation, 1, GL_FALSE, &myMatrix[0][0]);
-
-	glDrawElements(GL_TRIANGLE_FAN, 4, GL_UNSIGNED_INT, 0);
-	
 	glutSwapBuffers();	//	Inlocuieste imaginea deseneata in fereastra cu cea randata; 
 	glFlush();			//  Asigura rularea tuturor comenzilor OpenGL apelate anterior;
 }
