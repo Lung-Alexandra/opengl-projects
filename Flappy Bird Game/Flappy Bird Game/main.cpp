@@ -15,6 +15,7 @@
 #include "glm/gtc/type_ptr.hpp"
 #include "SOIL.h"			//	Biblioteca pentru texturare;
 #include <iostream>
+#include <vector>
 
 //  Identificatorii obiectelor de tip OpenGL;
 GLuint
@@ -30,7 +31,7 @@ projLocation,
 matrRotlLocation,
 codColLocation;
 GLuint
-textures[2];
+textures[3];
 //	Dimensiunile ferestrei de afisare;
 GLfloat
 winWidth = 1200, winHeight = 900;
@@ -51,8 +52,10 @@ float
 deltax = xMax - xMin, deltay = yMax - yMin, // lungimile laturilor dreptunghiului decupat
 xcenter = (xMin + xMax) * 0.5, ycenter = (yMin + yMax) * 0.5; // centrul dreptunghiului decupat
 
-float pipe_ymin = 0.0f, pipe_ymax = 1.f, 
-pipe_xmin = -0.25f, pipe_xmax = 0.25f;
+float pipe_xmin = -0.25f, pipe_xmax = 0.25f,
+pipe_ymin = 0.0f, pipe_ymax = 1.f;
+
+float pipeVelocity = 200, gametime = 0;
 
 // Global variables
 float birdY = 0.f; // Initial bird position
@@ -66,11 +69,24 @@ float rotationAngle = 0;
 const float gravity = 0.0005f;
 const float jump_strength = 0.3f;
 float score = 0; 
+int maxScore = 0;
+
+struct Pipe {
+	float x;
+	float y;
+	bool visible;
+};
+
+std::vector<Pipe> pipes = { {0,0,true},{300.f,-10,true},{600.f,20,true},{900.f,10,true}, {1200.f,200,true} };
 
 void game_over(void) {
 	if (birdY < yMin) {
+		if (score > maxScore) {
+			maxScore = score; // Actualizați scorul maxim dacă scorul curent este mai mare
+		}
 		// Bird hit the ground
 		std::cout << "Game Over. Your score: " << score << std::endl;
+		score = 0; // Resetați scorul curent
 		exit(0);
 	}
 }
@@ -135,7 +151,7 @@ void CreateShaders(void)
 {
 	BirdProgramId = LoadShaders("bird.vert", "bird.frag");
 	PipeProgramId = LoadShaders("pipe.vert", "pipe.frag");
-	//BackgroundProgramId = LoadShaders("bird.vert", "bird.frag");
+	BackgroundProgramId = LoadShaders("background.vert", "background.frag");
 }
 
 //  Se initializeaza un Vertex Buffer Object (VBO) pentru tranferul datelor spre memoria placii grafice (spre shadere);
@@ -160,6 +176,12 @@ void CreateVBO(void)
 		pipe_xmax, pipe_ymax, 0.0f, 1.0f,		0.0f, 1.0f, 0.0f,		1.0f, 1.0f,  // Partea de sus a conductei
 		pipe_xmin, pipe_ymax, 0.0f, 1.0f,		0.0f, 1.0f, 0.0f,		0.0f, 1.0f,  // Partea de sus a conductei
 
+		//background
+		xMin, yMin, 0.0f, 1.0f,		0.0f, 1.0f, 0.0f,		0.0f, 0.0f, 
+		xMax, yMin, 0.0f, 1.0f,		0.0f, 1.0f, 0.0f,		1.0f, 0.0f,
+		xMax, yMax, 0.0f, 1.0f,		0.0f, 1.0f, 0.0f,		1.0f, 1.0f,
+		xMin, yMax, 0.0f, 1.0f,		0.0f, 1.0f, 0.0f,		0.0f, 1.0f,
+
 	};
 
 	//	Indicii care determina ordinea de parcurgere a varfurilor;
@@ -167,7 +189,9 @@ void CreateVBO(void)
 		//indices for bird draw
 			0,1,2,3,
 		//indices for pipedraw
-			4,5,6,7
+			4,5,6,7,
+		//indices for background
+			8,9,10,11,
 	};
 
 	//  Transmiterea datelor prin buffere;
@@ -203,7 +227,7 @@ void DestroyShaders(void)
 {
 	glDeleteProgram(BirdProgramId);
 	glDeleteProgram(PipeProgramId);
-	//glDeleteProgram(BackgroundProgramId);
+	glDeleteProgram(BackgroundProgramId);
 }
 
 //  Eliminarea obiectelor de tip VBO dupa rulare;
@@ -258,10 +282,30 @@ void Initialize(void)
 	LoadTexture("pipe.png",1);
 	glBindTexture(GL_TEXTURE_2D, textures[1]);
 	
+
+	glUseProgram(BackgroundProgramId);
+	LoadTexture("background.png", 2);
+	glBindTexture(GL_TEXTURE_2D, textures[2]);
+
+}
+void DrawBackground(void) {
+	glUseProgram(BackgroundProgramId);
+	glBindTexture(GL_TEXTURE_2D, textures[2]);
 	
+	myMatrix = resizeMatrix;
+
+	//	Transmiterea variabilei uniforme pentru TEXTURARE spre shaderul de fragmente;
+	glUniform1i(glGetUniformLocation(BackgroundProgramId, "backgroundTexture"), 0);
+
+	//	Transmiterea variabilelor uniforme pentru MATRICEA DE TRANSFORMARE
+	glUniformMatrix4fv(myMatrixLocation, 1, GL_FALSE, &myMatrix[0][0]);
+
+	// Draw bird
+	glDrawElements(GL_TRIANGLE_FAN, 4, GL_UNSIGNED_INT, (void*)(8 * sizeof(GLuint)));
 }
 
 void DrawBird(void) {
+	glUseProgram(BirdProgramId);
 	glBindTexture(GL_TEXTURE_2D, textures[0]);
 	//	Matrici pentru transformari;
 	glm::mat4 matrRot = glm::rotate(glm::mat4(1.0f), rotationAngle, glm::vec3(0.0, 0.0, 1.0));
@@ -280,11 +324,13 @@ void DrawBird(void) {
 	glDrawElements(GL_TRIANGLE_FAN, 4, GL_UNSIGNED_INT, 0);
 }
 
-void DrawPipeDown(void) {
+void DrawPipeDown(float x, float y) {
+	glUseProgram(PipeProgramId);
 	glBindTexture(GL_TEXTURE_2D, textures[1]);
 	// matrici pentru pipe
 	glm::mat4 matrScalePipe = glm::scale(glm::mat4(1.f), glm::vec3(200, 400, 1.0));
-	glm::mat4 matrTranslatePipe = glm::translate(glm::mat4(1.f), glm::vec3(0, yMin, 1.0));
+	glm::mat4 matrTranslatePipe = glm::translate(glm::mat4(1.f),
+				glm::vec3(-gametime * pipeVelocity + x, yMin+y, 1.0));
 
 	myMatrix = resizeMatrix * matrTranslatePipe * matrScalePipe ;
 
@@ -298,14 +344,18 @@ void DrawPipeDown(void) {
 	glDrawElements(GL_TRIANGLE_FAN, 4, GL_UNSIGNED_INT, (void*)(4 * sizeof(GLuint)));
 
 }
-void DrawPipeUp(void) {
+
+void DrawPipeUp(float x, float y) {
+	glUseProgram(PipeProgramId);
 	glBindTexture(GL_TEXTURE_2D, textures[1]);
 	glUniform1i(glGetUniformLocation(PipeProgramId, "pipeTexture"), 0);
 
 	// matrici pentru pipe
 	glm::mat4 matrRotPipe = glm::rotate(glm::mat4(1.0f), PI, glm::vec3(0.0, 0.0, 1.0));
-	glm::mat4 matrScalePipe = glm::scale(glm::mat4(1.f), glm::vec3(200, 400, 1.0));
-	glm::mat4 matrTranslatePipe = glm::translate(glm::mat4(1.f), glm::vec3(0, yMax, 1.0));
+	// scale to a negative value on x to flip horizontal the texture
+	glm::mat4 matrScalePipe = glm::scale(glm::mat4(1.f), glm::vec3(-200, 400, 1.0));
+	glm::mat4 matrTranslatePipe = glm::translate(glm::mat4(1.f),
+				glm::vec3(-gametime*pipeVelocity+x, yMax+y, 1.0));
 
 	myMatrix = resizeMatrix * matrTranslatePipe * matrScalePipe * matrRotPipe;
 
@@ -319,15 +369,19 @@ void DrawPipeUp(void) {
 void RenderFunction(void)
 {
 	glClear(GL_COLOR_BUFFER_BIT);			//  Se curata ecranul OpenGL pentru a fi desenat noul continut;
-
-	DrawBird();
+	gametime += 0.001f;
 	
-	DrawPipeDown();
-	DrawPipeUp();
-
+	DrawBackground();
+	DrawBird();
+	for (Pipe& pipe : pipes) {
+		DrawPipeDown(pipe.x, pipe.y);
+		DrawPipeUp(pipe.x, pipe.y);
+	}
+	
 	glutSwapBuffers();	//	Inlocuieste imaginea deseneata in fereastra cu cea randata; 
 	glFlush();			//  Asigura rularea tuturor comenzilor OpenGL apelate anterior;
 }
+
 
 //	Punctul de intrare in program, se ruleaza rutina OpenGL;
 int main(int argc, char* argv[])
@@ -353,6 +407,7 @@ int main(int argc, char* argv[])
 
 	//	Functii ce proceseaza inputul de la tastatura utilizatorului;
 	glutKeyboardFunc(ProcessNormalKey);
+
 	glutCloseFunc(Cleanup);					//  Eliberarea resurselor alocate de program;
 
 	//  Bucla principala de procesare a evenimentelor GLUT (functiile care incep cu glut: glutInit etc.) este pornita;
