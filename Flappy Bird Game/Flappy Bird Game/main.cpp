@@ -53,9 +53,11 @@ deltax = xMax - xMin, deltay = yMax - yMin, // lungimile laturilor dreptunghiulu
 xcenter = (xMin + xMax) * 0.5, ycenter = (yMin + yMax) * 0.5; // centrul dreptunghiului decupat
 
 float pipe_xmin = -0.25f, pipe_xmax = 0.25f,
-pipe_ymin = 0.0f, pipe_ymax = 1.f;
+pipe_ymin = -1.0f, pipe_ymax = 1.f;
 
-float pipeVelocity = 200, gametime = 0;
+float pipeVelocity = 200, gametime = 0, delta_t = 0.001f;
+
+float pipeOffset = 300; // the space between the pipes.
 
 // Global variables
 float birdY = 0.f; // Initial bird position
@@ -66,7 +68,7 @@ bird_ymin = -0.5f, bird_ymax = 0.5f;
 float rotationAngle = 0;
 
 
-const float gravity = 0.0005f;
+const float gravity = 0.0009f;
 const float jump_strength = 0.3f;
 float score = 0; 
 int maxScore = 0;
@@ -74,34 +76,85 @@ int maxScore = 0;
 struct Pipe {
 	float x;
 	float y;
-	bool visible;
 };
 
-std::vector<Pipe> pipes = { {0,0,true},{300.f,-10,true},{600.f,20,true},{900.f,10,true}, {1200.f,200,true} };
+// Generate a random pipe at the given xcoordinate.
+// The y coordinate will be randomly chosen between -200, 200
+Pipe randomPipe(float xCoord) {
+	float y = rand() % (401) - 200;
+	return Pipe{ xCoord, y };
+}
 
-void game_over(void) {
-	if (birdY < yMin) {
-		if (score > maxScore) {
-			maxScore = score; // Actualizați scorul maxim dacă scorul curent este mai mare
-		}
-		// Bird hit the ground
-		std::cout << "Game Over. Your score: " << score << std::endl;
-		score = 0; // Resetați scorul curent
-		exit(0);
+std::vector<Pipe> pipes;
+void initialisationPipes() {
+	float x = 0;
+	for (int i = 0; i < 5; ++i) {
+		pipes.push_back(randomPipe(i * pipeOffset));
 	}
 }
 
- void MoveDown(void) {
+void game_over(void) {
+	if (score > maxScore) {
+		maxScore = score; // Actualizați scorul maxim dacă scorul curent este mai mare
+	}
+	// Bird hit the ground
+	std::cout << "Game Over. Your score: " << score << std::endl;
+	score = 0; // Resetați scorul curent
+	exit(0);
+}
+
+bool collision() {
+	// First check pipe collision.
+	// Then check ground collision.
+	if (birdY < yMin) {
+		return true;
+	}
+	return false; // Nicio coliziune detectată
+}
+
+// Updates the position and velocity of the bird.
+// Also, handle collisions.
+void UpdateBird(void) {
 	birdVelocity -= gravity;
 	birdY += birdVelocity;
 	if (birdVelocity < -1)
 		birdVelocity = -1;
 	/*
-	     v -> (-1,0.5) => v+1 -> (0,1.5) => (v+1)/1.5 -> (0,pi) 
+		 v -> (-1,0.5) => v+1 -> (0,1.5) => (v+1)/1.5 -> (0,pi)
 	*/
 
-	rotationAngle = ((birdVelocity + 1) / 1.5f) * PI - PI/2;
-	game_over();
+	rotationAngle = ((birdVelocity + 1) / 1.5f) * PI - PI / 2;
+	if (collision()) {
+		game_over();
+
+	}
+}
+
+// Updates the state of the pipes.
+// Each frame, move the pipes to the left side.
+// If the first pipe in the list exits the screen, delete it and add another one to the end.
+void UpdatePipes(void) {
+	for (Pipe& p : pipes) {
+		p.x -= delta_t * pipeVelocity;
+	}
+	if (pipes.empty()) {
+		return;
+	}
+	Pipe leftmost = pipes.front();
+	Pipe last = pipes.back();
+
+	if( leftmost.x < xMin - 100){
+		pipes.erase(pipes.begin());
+
+		float next_x = last.x + pipeOffset;
+		pipes.push_back(randomPipe(next_x));
+	}
+}
+
+ void Update(void) {
+	UpdateBird();
+	UpdatePipes();
+	
 	glutPostRedisplay();
 }
 
@@ -324,13 +377,13 @@ void DrawBird(void) {
 	glDrawElements(GL_TRIANGLE_FAN, 4, GL_UNSIGNED_INT, 0);
 }
 
-void DrawPipeDown(float x, float y) {
+void DrawPipeDown(const Pipe&pipe) {
 	glUseProgram(PipeProgramId);
 	glBindTexture(GL_TEXTURE_2D, textures[1]);
 	// matrici pentru pipe
-	glm::mat4 matrScalePipe = glm::scale(glm::mat4(1.f), glm::vec3(200, 400, 1.0));
+	glm::mat4 matrScalePipe = glm::scale(glm::mat4(1.f), glm::vec3(200, 300, 1.0));
 	glm::mat4 matrTranslatePipe = glm::translate(glm::mat4(1.f),
-				glm::vec3(-gametime * pipeVelocity + x, yMin+y, 1.0));
+				glm::vec3(pipe.x, yMin + pipe.y, 1.0));
 
 	myMatrix = resizeMatrix * matrTranslatePipe * matrScalePipe ;
 
@@ -345,7 +398,7 @@ void DrawPipeDown(float x, float y) {
 
 }
 
-void DrawPipeUp(float x, float y) {
+void DrawPipeUp(const Pipe& pipe) {
 	glUseProgram(PipeProgramId);
 	glBindTexture(GL_TEXTURE_2D, textures[1]);
 	glUniform1i(glGetUniformLocation(PipeProgramId, "pipeTexture"), 0);
@@ -353,9 +406,9 @@ void DrawPipeUp(float x, float y) {
 	// matrici pentru pipe
 	glm::mat4 matrRotPipe = glm::rotate(glm::mat4(1.0f), PI, glm::vec3(0.0, 0.0, 1.0));
 	// scale to a negative value on x to flip horizontal the texture
-	glm::mat4 matrScalePipe = glm::scale(glm::mat4(1.f), glm::vec3(-200, 400, 1.0));
+	glm::mat4 matrScalePipe = glm::scale(glm::mat4(1.f), glm::vec3(-200, 300, 1.0));
 	glm::mat4 matrTranslatePipe = glm::translate(glm::mat4(1.f),
-				glm::vec3(-gametime*pipeVelocity+x, yMax+y, 1.0));
+				glm::vec3(pipe.x, yMax + pipe.y, 1.0));
 
 	myMatrix = resizeMatrix * matrTranslatePipe * matrScalePipe * matrRotPipe;
 
@@ -369,15 +422,15 @@ void DrawPipeUp(float x, float y) {
 void RenderFunction(void)
 {
 	glClear(GL_COLOR_BUFFER_BIT);			//  Se curata ecranul OpenGL pentru a fi desenat noul continut;
-	gametime += 0.001f;
+	gametime += delta_t;
 	
 	DrawBackground();
 	DrawBird();
-	for (Pipe& pipe : pipes) {
-		DrawPipeDown(pipe.x, pipe.y);
-		DrawPipeUp(pipe.x, pipe.y);
+
+	for (Pipe p : pipes) {
+		DrawPipeUp(p);
+		DrawPipeDown(p);
 	}
-	
 	glutSwapBuffers();	//	Inlocuieste imaginea deseneata in fereastra cu cea randata; 
 	glFlush();			//  Asigura rularea tuturor comenzilor OpenGL apelate anterior;
 }
@@ -399,11 +452,11 @@ int main(int argc, char* argv[])
 
 	glewInit();
 
-	Initialize();							//  Setarea parametrilor necesari pentru fereastra de vizualizare; 
+	Initialize();
+	initialisationPipes();
+		//  Setarea parametrilor necesari pentru fereastra de vizualizare; 
 	glutDisplayFunc(RenderFunction);		//  Desenarea scenei in fereastra;
-	glutIdleFunc(RenderFunction);			//	Asigura rularea continua a randarii;
-
-	glutIdleFunc(MoveDown);
+	glutIdleFunc(Update);
 
 	//	Functii ce proceseaza inputul de la tastatura utilizatorului;
 	glutKeyboardFunc(ProcessNormalKey);
