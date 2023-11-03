@@ -76,13 +76,19 @@ int maxScore = 0;
 struct Pipe {
 	float x;
 	float y;
+	bool passed;
 };
 
+void UpdateScore() {
+	score += 1;
+}
+
 // Generate a random pipe at the given xcoordinate.
-// The y coordinate will be randomly chosen between -200, 200
+// The y coordinate will be randomly chosen between -100, 100
 Pipe randomPipe(float xCoord) {
-	float y = rand() % (401) - 200;
-	return Pipe{ xCoord, y };
+	//float y = rand() % (401) - 200;
+	float y = rand() % (201) - 100;
+	return Pipe{ xCoord, y, false};
 }
 
 std::vector<Pipe> pipes;
@@ -104,7 +110,8 @@ void game_over(void) {
 }
 
 bool collision() {
-	// First check pipe collision.
+	//// First check pipe collision.
+	
 	// Then check ground collision.
 	if (birdY < yMin) {
 		return true;
@@ -120,14 +127,15 @@ void UpdateBird(void) {
 	if (birdVelocity < -1)
 		birdVelocity = -1;
 	/*
-		 v -> (-1,0.5) => v+1 -> (0,1.5) => (v+1)/1.5 -> (0,pi)
+		 v -> (-1,0.5) => v+1 -> (0,1.5) => (v+1)/1.5 -> (0,1) => (v+1)/1.5 * pi -> (0,pi)
+		 => (v+1)/1.5*pi - pi/2 => (-pi/2,pi/2)
 	*/
 
 	rotationAngle = ((birdVelocity + 1) / 1.5f) * PI - PI / 2;
 	if (collision()) {
 		game_over();
-
 	}
+	
 }
 
 // Updates the state of the pipes.
@@ -136,6 +144,13 @@ void UpdateBird(void) {
 void UpdatePipes(void) {
 	for (Pipe& p : pipes) {
 		p.x -= delta_t * pipeVelocity;
+		// to verify if a pipe is passed we verify if p.x < bird x position + ( length of the pipe)
+		// length of the pipe is equal with 200 (from scale) *  (- 0.25) the initial coordonate
+		// of the pipe on Ox ax
+		if (p.x < -300.f - 50.f && p.passed != true) {
+				p.passed = true;
+				UpdateScore();
+		}
 	}
 	if (pipes.empty()) {
 		return;
@@ -347,9 +362,6 @@ void DrawBackground(void) {
 	
 	myMatrix = resizeMatrix;
 
-	//	Transmiterea variabilei uniforme pentru TEXTURARE spre shaderul de fragmente;
-	glUniform1i(glGetUniformLocation(BackgroundProgramId, "backgroundTexture"), 0);
-
 	//	Transmiterea variabilelor uniforme pentru MATRICEA DE TRANSFORMARE
 	glUniformMatrix4fv(myMatrixLocation, 1, GL_FALSE, &myMatrix[0][0]);
 
@@ -368,7 +380,7 @@ void DrawBird(void) {
 	myMatrix = resizeMatrix * matrTranslate * matrScale * matrRot;
 
 	//	Transmiterea variabilei uniforme pentru TEXTURARE spre shaderul de fragmente;
-	glUniform1i(glGetUniformLocation(BirdProgramId, "birdTexture"), 0);
+	glUniform1f(glGetUniformLocation(BirdProgramId, "gametime"), gametime);
 
 	//	Transmiterea variabilelor uniforme pentru MATRICEA DE TRANSFORMARE
 	glUniformMatrix4fv(myMatrixLocation, 1, GL_FALSE, &myMatrix[0][0]);
@@ -377,16 +389,28 @@ void DrawBird(void) {
 	glDrawElements(GL_TRIANGLE_FAN, 4, GL_UNSIGNED_INT, 0);
 }
 
-void DrawPipeDown(const Pipe&pipe) {
+void DrawPipeDown(const Pipe&pipe, bool upDown) {
 	glUseProgram(PipeProgramId);
 	glBindTexture(GL_TEXTURE_2D, textures[1]);
-	// matrici pentru pipe
-	glm::mat4 matrScalePipe = glm::scale(glm::mat4(1.f), glm::vec3(200, 300, 1.0));
-	glm::mat4 matrTranslatePipe = glm::translate(glm::mat4(1.f),
-				glm::vec3(pipe.x, yMin + pipe.y, 1.0));
+	
+	if (upDown == true) {
+		// matrici pentru pipe
+		glm::mat4 matrScalePipe = glm::scale(glm::mat4(1.f), glm::vec3(200, 300, 1.0));
+		glm::mat4 matrTranslatePipe = glm::translate(glm::mat4(1.f),
+			glm::vec3(pipe.x, yMin + pipe.y, 1.0));
 
-	myMatrix = resizeMatrix * matrTranslatePipe * matrScalePipe ;
+		myMatrix = resizeMatrix * matrTranslatePipe * matrScalePipe;
+	}
+	else {
+		// matrici pentru pipe
+		glm::mat4 matrRotPipe = glm::rotate(glm::mat4(1.0f), PI, glm::vec3(0.0, 0.0, 1.0));
+		// scale to a negative value on x to flip horizontal the texture
+		glm::mat4 matrScalePipe = glm::scale(glm::mat4(1.f), glm::vec3(-200, 300, 1.0));
+		glm::mat4 matrTranslatePipe = glm::translate(glm::mat4(1.f),
+			glm::vec3(pipe.x, yMax - pipe.y, 1.0));
 
+		myMatrix = resizeMatrix * matrTranslatePipe * matrScalePipe * matrRotPipe;
+	}
 	//	Transmiterea variabilei uniforme pentru TEXTURARE spre shaderul de fragmente;
 	glUniform1i(glGetUniformLocation(PipeProgramId, "pipeTexture"), 0);
 
@@ -398,25 +422,6 @@ void DrawPipeDown(const Pipe&pipe) {
 
 }
 
-void DrawPipeUp(const Pipe& pipe) {
-	glUseProgram(PipeProgramId);
-	glBindTexture(GL_TEXTURE_2D, textures[1]);
-	glUniform1i(glGetUniformLocation(PipeProgramId, "pipeTexture"), 0);
-
-	// matrici pentru pipe
-	glm::mat4 matrRotPipe = glm::rotate(glm::mat4(1.0f), PI, glm::vec3(0.0, 0.0, 1.0));
-	// scale to a negative value on x to flip horizontal the texture
-	glm::mat4 matrScalePipe = glm::scale(glm::mat4(1.f), glm::vec3(-200, 300, 1.0));
-	glm::mat4 matrTranslatePipe = glm::translate(glm::mat4(1.f),
-				glm::vec3(pipe.x, yMax + pipe.y, 1.0));
-
-	myMatrix = resizeMatrix * matrTranslatePipe * matrScalePipe * matrRotPipe;
-
-	//	Transmiterea variabilelor uniforme pentru MATRICEA DE TRANSFORMARE
-	glUniformMatrix4fv(myMatrixLocation, 1, GL_FALSE, &myMatrix[0][0]);
-	// Draw bottom pipe
-	glDrawElements(GL_TRIANGLE_FAN, 4, GL_UNSIGNED_INT, (void*)(4 * sizeof(GLuint)));
-}
 
 //  Functia de desenarea a graficii pe ecran;
 void RenderFunction(void)
@@ -428,9 +433,13 @@ void RenderFunction(void)
 	DrawBird();
 
 	for (Pipe p : pipes) {
-		DrawPipeUp(p);
-		DrawPipeDown(p);
+		//second argument represents if we draw the up pipe or down
+		// 1 -> up
+		// 0 -> down
+		DrawPipeDown(p,false);
+		DrawPipeDown(p,true);
 	}
+	
 	glutSwapBuffers();	//	Inlocuieste imaginea deseneata in fereastra cu cea randata; 
 	glFlush();			//  Asigura rularea tuturor comenzilor OpenGL apelate anterior;
 }
