@@ -110,7 +110,7 @@ void game_over(void) {
 }
 
 bool collision() {
-	//// First check pipe collision.
+	// First check pipe collision.
 	
 	// Then check ground collision.
 	if (birdY < yMin) {
@@ -399,7 +399,7 @@ void DrawPipeDown(const Pipe&pipe, bool upDown) {
 		glm::mat4 matrTranslatePipe = glm::translate(glm::mat4(1.f),
 			glm::vec3(pipe.x, yMin + pipe.y, 1.0));
 
-		myMatrix = resizeMatrix * matrTranslatePipe * matrScalePipe;
+		myMatrix = matrTranslatePipe * matrScalePipe;
 	}
 	else {
 		// matrici pentru pipe
@@ -409,11 +409,12 @@ void DrawPipeDown(const Pipe&pipe, bool upDown) {
 		glm::mat4 matrTranslatePipe = glm::translate(glm::mat4(1.f),
 			glm::vec3(pipe.x, yMax - pipe.y, 1.0));
 
-		myMatrix = resizeMatrix * matrTranslatePipe * matrScalePipe * matrRotPipe;
+		myMatrix =  matrTranslatePipe * matrScalePipe * matrRotPipe;
 	}
 	//	Transmiterea variabilei uniforme pentru TEXTURARE spre shaderul de fragmente;
 	glUniform1i(glGetUniformLocation(PipeProgramId, "pipeTexture"), 0);
-
+	
+	myMatrix = resizeMatrix * myMatrix;
 	//	Transmiterea variabilelor uniforme pentru MATRICEA DE TRANSFORMARE
 	glUniformMatrix4fv(myMatrixLocation, 1, GL_FALSE, &myMatrix[0][0]);
 
