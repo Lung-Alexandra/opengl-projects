@@ -73,11 +73,62 @@ const float jump_strength = 0.3f;
 float score = 0; 
 int maxScore = 0;
 
+// Defines a bounding box.
+struct BoundingBox {
+	float x_left;
+	float x_right;
+	float y_down;
+	float y_up;
+};
+
+bool intersect(const BoundingBox& a, const BoundingBox& b) {
+	return (a.x_left < b.x_right && a.x_right > b.x_left && a.y_down <b.y_up && a.y_up > b.y_down);
+}
+
+std::ostream& operator<<(std::ostream&o, const BoundingBox& b) {
+	o << "(x: " << b.x_left << " - " << b.x_right << " y: " << b.y_down << " - " << b.y_up;
+	return o;
+
+}
+
 struct Pipe {
 	float x;
 	float y;
 	bool passed;
 };
+
+BoundingBox getBoundingBoxDown(const Pipe& pipe) {
+	glm::mat4 matrScalePipe = glm::scale(glm::mat4(1.f), glm::vec3(200, 300, 1.0));
+	glm::mat4 matrTranslatePipe = glm::translate(glm::mat4(1.f),
+		glm::vec3(pipe.x, yMin + pipe.y, 1.0));
+	glm::mat4 model = matrTranslatePipe * matrScalePipe;
+	glm::vec4 up_left = (model * glm::vec4(pipe_xmin, pipe_ymax, 0, 1));
+	glm::vec4 down_right = (model * glm::vec4(pipe_xmax, pipe_ymin, 0, 1));
+	return BoundingBox{ up_left.x, down_right.x, down_right.y, up_left.y };
+}
+
+BoundingBox getBoundingBoxUp(const Pipe& pipe) {
+	glm::mat4 matrRotPipe = glm::rotate(glm::mat4(1.0f), PI, glm::vec3(0.0, 0.0, 1.0));
+	// scale to a negative value on x to flip horizontal the texture
+	glm::mat4 matrScalePipe = glm::scale(glm::mat4(1.f), glm::vec3(200, 300, 1.0));
+	glm::mat4 matrTranslatePipe = glm::translate(glm::mat4(1.f),
+		glm::vec3(pipe.x, yMax + pipe.y, 1.0));
+	glm::mat4 model = matrTranslatePipe * matrScalePipe * matrRotPipe;
+	glm::vec4 up_left = (model * glm::vec4(pipe_xmax, pipe_ymin, 0, 1));
+	glm::vec4 down_right = (model * glm::vec4(pipe_xmin, pipe_ymax, 0, 1));
+	return BoundingBox{ up_left.x, down_right.x, down_right.y, up_left.y };
+}
+
+BoundingBox getBoundingBoxBird() {
+	glm::mat4 matrScaleBird = glm::scale(glm::mat4(1.f), glm::vec3(80, 80, 1.0));
+	glm::mat4 matrTranslateBird = glm::translate(glm::mat4(1.f), glm::vec3(-300, birdY, 1.0));
+	glm::mat4 model = matrTranslateBird * matrScaleBird;
+	glm::vec4 up_left = (model * glm::vec4(bird_xmin, bird_ymax, 0, 1));
+	glm::vec4 down_right = (model * glm::vec4(bird_xmax, bird_ymin, 0, 1));
+	return BoundingBox{ up_left.x, down_right.x , down_right.y , up_left.y };
+}
+
+
 
 void UpdateScore() {
 	score += 1;
@@ -111,7 +162,24 @@ void game_over(void) {
 
 bool collision() {
 	// First check pipe collision.
+	BoundingBox bird = getBoundingBoxBird();
+
+
+	/*std::cout << "Front pipe: " << pipes.front().x << " " << pipes.front().y <<std::endl;
+	std:: cout << "Down: "<< frontDown << std::endl;
+	std::cout << "Up: " << frontUp << std::endl;
+	std::cout << "Bird: " << birdY << std::endl;
+	std::cout << "Bounding box bird: " <<bird<< std::endl;*/
 	
+	for (const Pipe& p : pipes) {
+		BoundingBox frontDown = getBoundingBoxDown(p);
+		BoundingBox frontUp = getBoundingBoxUp(p);
+		if (intersect(bird, frontDown))
+			return true;
+		if (intersect(bird, frontUp))
+			return true;
+	}
+
 	// Then check ground collision.
 	if (birdY < yMin) {
 		return true;
@@ -407,13 +475,13 @@ void DrawPipeDown(const Pipe&pipe, bool upDown) {
 		// scale to a negative value on x to flip horizontal the texture
 		glm::mat4 matrScalePipe = glm::scale(glm::mat4(1.f), glm::vec3(-200, 300, 1.0));
 		glm::mat4 matrTranslatePipe = glm::translate(glm::mat4(1.f),
-			glm::vec3(pipe.x, yMax - pipe.y, 1.0));
+			glm::vec3(pipe.x, yMax + pipe.y, 1.0));
 
 		myMatrix =  matrTranslatePipe * matrScalePipe * matrRotPipe;
 	}
 	//	Transmiterea variabilei uniforme pentru TEXTURARE spre shaderul de fragmente;
 	glUniform1i(glGetUniformLocation(PipeProgramId, "pipeTexture"), 0);
-	
+
 	myMatrix = resizeMatrix * myMatrix;
 	//	Transmiterea variabilelor uniforme pentru MATRICEA DE TRANSFORMARE
 	glUniformMatrix4fv(myMatrixLocation, 1, GL_FALSE, &myMatrix[0][0]);
