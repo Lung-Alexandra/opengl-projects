@@ -22,6 +22,6 @@ void main(void){
     gl_Position = myMatrix * in_Position;
 	ex_Color = in_Color;
     tex_Coord = vec2(texCoord.x, 1 - texCoord.y);
-    
+
 } 
  
