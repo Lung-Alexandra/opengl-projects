@@ -73,7 +73,7 @@ const float gravity = 0.0009f;
 const float jump_strength = 0.3f;
 int score = 0; 
 int maxScore = 0;
-
+	
 // Defines a bounding box.
 struct BoundingBox {
 	float x_left;
@@ -423,19 +423,6 @@ void Initialize(void)
 	glBindTexture(GL_TEXTURE_2D, textures[2]);
 
 }
-void DrawScore(float x, float y, void* font)
-{
-	glUseProgram(0);
-	std::string scoreText = std::to_string(score);
-
-	glRasterPos2f(x, y);
-
-	for (char c : scoreText)
-	{
-		glutBitmapCharacter(font, c);
-	}
-}
-
 void DrawBackground(void) {
 	glUseProgram(BackgroundProgramId);
 	glBindTexture(GL_TEXTURE_2D, textures[2]);
