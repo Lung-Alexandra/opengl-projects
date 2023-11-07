@@ -16,6 +16,7 @@
 #include "SOIL.h"			//	Biblioteca pentru texturare;
 #include <iostream>
 #include <vector>
+#include <string>
 
 //  Identificatorii obiectelor de tip OpenGL;
 GLuint
@@ -70,7 +71,7 @@ float rotationAngle = 0;
 
 const float gravity = 0.0009f;
 const float jump_strength = 0.3f;
-float score = 0; 
+int score = 0; 
 int maxScore = 0;
 
 // Defines a bounding box.
@@ -164,7 +165,6 @@ bool collision() {
 	// First check pipe collision.
 	BoundingBox bird = getBoundingBoxBird();
 
-
 	/*std::cout << "Front pipe: " << pipes.front().x << " " << pipes.front().y <<std::endl;
 	std:: cout << "Down: "<< frontDown << std::endl;
 	std::cout << "Up: " << frontUp << std::endl;
@@ -191,9 +191,9 @@ bool collision() {
 // Also, handle collisions.
 void UpdateBird(void) {
 	birdVelocity -= gravity;
-	birdY += birdVelocity;
 	if (birdVelocity < -1)
 		birdVelocity = -1;
+	birdY += birdVelocity;
 	/*
 		 v -> (-1,0.5) => v+1 -> (0,1.5) => (v+1)/1.5 -> (0,1) => (v+1)/1.5 * pi -> (0,pi)
 		 => (v+1)/1.5*pi - pi/2 => (-pi/2,pi/2)
@@ -210,14 +210,13 @@ void UpdateBird(void) {
 // Each frame, move the pipes to the left side.
 // If the first pipe in the list exits the screen, delete it and add another one to the end.
 void UpdatePipes(void) {
+	BoundingBox bird = getBoundingBoxBird();
 	for (Pipe& p : pipes) {
-		p.x -= delta_t * pipeVelocity;
-		// to verify if a pipe is passed we verify if p.x < bird x position + ( length of the pipe)
-		// length of the pipe is equal with 200 (from scale) *  (- 0.25) the initial coordonate
-		// of the pipe on Ox ax
-		if (p.x < -300.f - 50.f && p.passed != true) {
-				p.passed = true;
-				UpdateScore();
+		p.x -= delta_t * pipeVelocity; 
+		// to verify if a pipe is passed we verify if p.x < bird x position min
+		if (p.x < bird.x_left && p.passed != true) {
+			p.passed = true;
+			UpdateScore();
 		}
 	}
 	if (pipes.empty()) {
@@ -307,10 +306,10 @@ void CreateVBO(void)
 		//pipe coordonate
 		
 		// Coordonate;								Culori;				Coordonate de texturare;
-		pipe_xmin, pipe_ymin, 0.0f, 1.0f,		0.0f, 1.0f, 0.0f,		0.0f, 0.0f,  // Partea de jos a conductei
-		pipe_xmax, pipe_ymin, 0.0f, 1.0f,		0.0f, 1.0f, 0.0f,		1.0f, 0.0f,  // Partea de jos a conductei
-		pipe_xmax, pipe_ymax, 0.0f, 1.0f,		0.0f, 1.0f, 0.0f,		1.0f, 1.0f,  // Partea de sus a conductei
-		pipe_xmin, pipe_ymax, 0.0f, 1.0f,		0.0f, 1.0f, 0.0f,		0.0f, 1.0f,  // Partea de sus a conductei
+		pipe_xmin, pipe_ymin, 0.0f, 1.0f,		0.0f, 1.0f, 0.0f,		0.0f, 0.0f,  // stanga jos
+		pipe_xmax, pipe_ymin, 0.0f, 1.0f,		0.0f, 1.0f, 0.0f,		1.0f, 0.0f,  // dreapta jos
+		pipe_xmax, pipe_ymax, 0.0f, 1.0f,		0.0f, 1.0f, 0.0f,		1.0f, 1.0f,  // dreapta sus
+		pipe_xmin, pipe_ymax, 0.0f, 1.0f,		0.0f, 1.0f, 0.0f,		0.0f, 1.0f,  // stanga sus
 
 		//background
 		xMin, yMin, 0.0f, 1.0f,		0.0f, 1.0f, 0.0f,		0.0f, 0.0f, 
@@ -424,6 +423,19 @@ void Initialize(void)
 	glBindTexture(GL_TEXTURE_2D, textures[2]);
 
 }
+void DrawScore(float x, float y, void* font)
+{
+	glUseProgram(0);
+	std::string scoreText = std::to_string(score);
+
+	glRasterPos2f(x, y);
+
+	for (char c : scoreText)
+	{
+		glutBitmapCharacter(font, c);
+	}
+}
+
 void DrawBackground(void) {
 	glUseProgram(BackgroundProgramId);
 	glBindTexture(GL_TEXTURE_2D, textures[2]);
@@ -433,7 +445,7 @@ void DrawBackground(void) {
 	//	Transmiterea variabilelor uniforme pentru MATRICEA DE TRANSFORMARE
 	glUniformMatrix4fv(myMatrixLocation, 1, GL_FALSE, &myMatrix[0][0]);
 
-	// Draw bird
+	// Draw background
 	glDrawElements(GL_TRIANGLE_FAN, 4, GL_UNSIGNED_INT, (void*)(8 * sizeof(GLuint)));
 }
 
@@ -486,7 +498,7 @@ void DrawPipeDown(const Pipe&pipe, bool upDown) {
 	//	Transmiterea variabilelor uniforme pentru MATRICEA DE TRANSFORMARE
 	glUniformMatrix4fv(myMatrixLocation, 1, GL_FALSE, &myMatrix[0][0]);
 
-	// Draw bottom pipe
+	// Draw pipe
 	glDrawElements(GL_TRIANGLE_FAN, 4, GL_UNSIGNED_INT, (void*)(4 * sizeof(GLuint)));
 
 }
@@ -508,7 +520,6 @@ void RenderFunction(void)
 		DrawPipeDown(p,false);
 		DrawPipeDown(p,true);
 	}
-	
 	glutSwapBuffers();	//	Inlocuieste imaginea deseneata in fereastra cu cea randata; 
 	glFlush();			//  Asigura rularea tuturor comenzilor OpenGL apelate anterior;
 }
